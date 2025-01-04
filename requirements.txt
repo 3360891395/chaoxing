@@ -1,4 +1,10 @@
-maskpass
-natsort
 requests
-urllib3==1.25.11
+pyaes
+beautifulsoup4
+lxml
+argparse
+loguru
+celery
+flask
+fonttools
+openai

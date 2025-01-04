@@ -1,155 +1,266 @@
-import random
-import time
+# -*- coding: utf-8 -*-
 import argparse
+import configparser
+import random
 
-import utils.functions as ft
-from api.chaoxing import Chaoxing
+from api.logger import logger
+from api.base import Chaoxing, Account
+from api.exceptions import LoginError, FormatError, JSONDecodeError, MaxRollBackError
+from api.answer import Tiku
+from urllib3 import disable_warnings, exceptions
+import time
+import sys
+import os
 
+# # 定义全局变量, 用于存储配置文件路径
+# textPath = './resource/BookID.txt'
 
-def do_work(chaoxingAPI):
-    # done = list(ft.load_finished(chaoxingAPI.usernm))
-    logger.info("开始获取所有章节")
-    chaoxingAPI.get_selected_course_data()  # 读取所有章节
-    for mission in chaoxingAPI.missions:
-        logger.debug("开始读取章节信息")
-        knowledge_raw = chaoxingAPI.get_mission(mission['id'], chaoxingAPI.selected_course['key'])  # 读取章节信息
-        if "data" not in knowledge_raw and "error" in knowledge_raw:
-            logger.debug("---knowledge_raw info begin---")
-            logger.debug(knowledge_raw)
-            logger.debug("---knowledge_raw info end---")
-            input("章节数据错误,可能是课程存在验证码,请在客户端中完成验证后再运行\n若问题仍然存在,请附带日志文件联系作者\n点击回车键退出程序")
-            exit()
-        tabs = len(knowledge_raw['data'][0]['card']['data'])
-        for tab_index in range(tabs):
-            print("开始读取标签信息")
-            knowledge_card_text = chaoxingAPI.get_knowledge(
-                chaoxingAPI.selected_course['key'],
-                chaoxingAPI.selected_course['content']['course']['data'][0]['id'],
-                mission["id"],
-                tab_index
-            )
-            attachments: dict = chaoxingAPI.get_attachments(knowledge_card_text)
-            if not attachments:
-                continue
-            if not attachments.get('attachments'):
-                continue
-            print(f'\n当前章节:{mission["label"]}:{mission["name"]}')
-            for attachment in attachments['attachments']:
-            #logger.debug("---attachment info begin---")
-            #logger.debug(attachment)
-            #logger.debug("---attachment info end---")
-                if attachment.get('type') != 'video': # 非视频任务跳过
-                    print("跳过非视频任务")
-                    continue
-                print(f"\n当前视频:{attachment['property']['name']}")
-                if attachment.get('isPassed'):
-                    print("当前视频任务已完成")
-                    ft.show_progress(attachment['property']['name'], 1, 1, 1)
-                    ft.time.sleep(1)
-                    continue
-                video_info = chaoxingAPI.get_d_token(
-                    attachment['objectId'],
-                    attachments['defaults']['fid']
-                )
-                jobid = None
-                if "jobid" in attachments:  # it's stupid
-                    jobid = attachments["jobid"]
-                else: 
-                    if "jobid" in attachment:
-                        jobid = attachment["jobid"]
-                    else:
-                        if "jobid" in attachment['property']:
-                            jobid = attachment['property']['jobid']
-                        else:
-                            if "'_jobid'" in attachment['property']:
-                                jobid = attachment['property']['_jobid']
-                if not jobid:
-                    print("未找到jobid，已跳过当前任务点")
-                    continue
-                if adopt:
-                    logger.debug("已启用自适应速率")
-                    if "doublespeed" in attachment['property']:
-                        if attachment['property']['doublespeed']:
-                            print("当前视频支持倍速播放,已切换速率")
-                            chaoxing.speed = 2
-                    else:
-                        print("当前视频不支持倍速播放,跳过")
-                        chaoxing.speed = set_speed
-                chaoxingAPI.pass_video(
-                    video_info['duration'],
-                    attachments['defaults']['cpi'],
-                    video_info['dtoken'],
-                    attachment['otherInfo'],
-                    chaoxingAPI.selected_course['key'],
-                    attachment['jobid'],
-                    video_info['objectid'],
-                    chaoxingAPI.uid,
-                    attachment['property']['name'],
-                    chaoxingAPI.speed
-                )
-                ft.pause(1, 3)
-                chaoxing.speed = set_speed  # 预防ERR
+# # 获取文本 -> 用于查看学习过的课程ID
+# def getText():
+#     try:
+#         if not os.path.exists(textPath):
+#             with open(textPath, 'x') as file: pass
+#             return []
+#         with open(textPath, 'r', encoding='utf-8') as file: content = file.read().split(',')
+#         content = {int(item.strip()) for item in content if item.strip()}
+#         return list(content)
+#     except Exception as e: logger.error(f"获取文本失败: {e}"); return []
+
+# # 追加文本 -> 用于记录学习过的课程ID
+# def appendText(text):
+#     if not os.path.exists(textPath): return
+#     with open(textPath, 'a', encoding='utf-8') as file: file.write(f'{text}, ')
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='chaoxing-xuexitong')  # 命令行传参
-    parser.add_argument('-debug','--debug', action='store_true', help='Enable debug output in console')
-    parser.add_argument('--no-adopt', action='store_false', help='Disable adopt speed')
-    parser.add_argument('--no-log', action='store_false', help='Disable Console log')
-    parser.add_argument('--no-logo', action='store_false', help='Disable Boot logo')
-    parser.add_argument('--no-sec', action='store_false', help='Disable all security feature')
+# 关闭警告
+disable_warnings(exceptions.InsecureRequestWarning)
 
-    args = parser.parse_args()  # 定义专用参数变量
-    enable_adopt = args.no_adopt # 启用自适应速率 Default:True
-    debug = args.debug  # debug输出  Default:False
-    show = args.no_log # 显示控制台log Default:True
-    logo = args.no_logo # 展示启动LOGO Default:True
-    hideinfo = args.no_sec  # 启用隐私保护 Default:True
 
+def init_config():
+    parser = argparse.ArgumentParser(
+        description="Samueli924/chaoxing",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    parser.add_argument(
+        "-c", "--config", type=str, default=None, help="使用配置文件运行程序"
+    )
+    parser.add_argument("-u", "--username", type=str, default=None, help="手机号账号")
+    parser.add_argument("-p", "--password", type=str, default=None, help="登录密码")
+    parser.add_argument(
+        "-l", "--list", type=str, default=None, help="要学习的课程ID列表, 以 , 分隔"
+    )
+    parser.add_argument(
+        "-s", "--speed", type=float, default=1.0, help="视频播放倍速 (默认1, 最大2)"
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        "--debug",
+        action="store_true",
+        help="启用调试模式, 输出DEBUG级别日志",
+    )
+
+    # 在解析之前捕获 -h 的行为
+    if len(sys.argv) == 2 and sys.argv[1] in {"-h", "--help"}:
+        parser.print_help()
+        # 返回一个 SystemExit 异常, 用于退出程序
+        raise SystemExit
+
+    # 提前检查 -h 和 --help 并退出
+    args = parser.parse_args()
+
+    if args.config:
+        config = configparser.ConfigParser()
+        config.read(args.config, encoding="utf8")
+        return (
+            config.get("common", "username"),
+            config.get("common", "password"),
+            (
+                str(config.get("common", "course_list")).split(",")
+                if config.get("common", "course_list")
+                else None
+            ),
+            int(config.get("common", "speed")),
+            config["tiku"],
+        )
+    else:
+        return (
+            args.username,
+            args.password,
+            args.list.split(",") if args.list else None,
+            int(args.speed) if args.speed else 1,
+            None,
+        )
+
+
+class RollBackManager:
+    def __init__(self) -> None:
+        self.rollback_times = 0
+        self.rollback_id = ""
+
+    def add_times(self, id: str) -> None:
+        if id == self.rollback_id and self.rollback_times == 3:
+            raise MaxRollBackError("回滚次数已达3次, 请手动检查学习通任务点完成情况")
+        elif id != self.rollback_id:
+            # 新job
+            self.rollback_id = id
+            self.rollback_times = 1
+        else:
+            self.rollback_times += 1
+
+
+if __name__ == "__main__":
     try:
-        ft.init_all_path(["saves", "logs"])  # 检查文件夹
-        logger = ft.Logger("main",debug,show)  # 初始化日志类
-        if debug:
-            logger.debug("已启用debug输出")
-        if not show:
-            logger.debug("已关闭控制台日志")
-        ft.title_show(logo)     # 显示头
-        if not logo:
-            logger.debug("已关闭启动LOGO")
-        if not enable_adopt:
-            logger.debug("已关闭自适应速率")
-        logger.info("正在读取本地用户数据...")
-        usernm, secname, passwd = ft.load_users(hideinfo)    # 获取账号密码
-        chaoxing = Chaoxing(usernm, passwd, debug, show)     # 实例化超星API
-        chaoxing.init_explorer()    # 实例化浏览Explorer
-        logger.info("登陆中")
-        if chaoxing.login():    # 登录
-            logger.info("已登录账户：" +secname)
-            logger.info("正在读取所有课程")
-            if chaoxing.get_all_courses():  # 读取所有的课程
-                logger.info("进行选课")
-                if chaoxing.select_course():    # 选择要学习的课程
-                    set_speed = input("默认倍速： 1 倍速 \n在不紧急的情况下建议使用 1 倍速，因使用不合理的多倍速造成的一切风险与作者无关\n请输入您想要的整数学习倍速:")
-                    if not set_speed or set_speed == 0:
-                        chaoxing.speed = 1
-                        set_speed = 1
-                        logger.info("已使用默认速率")
-                    else:
-                        chaoxing.speed = int(set_speed)
-                        set_speed = int(set_speed)
-                    logger.debug("当前设置速率："+str(chaoxing.speed)+"倍速")
-                    if enable_adopt and set_speed == 1 and input("是否启用自适应速率(当播放速率为1且视频支持倍速播放时,自动切换为两倍速)\n！注意 该功能可能存在风险！输入(Y/y)启用") == "Y" or "y":
-                        adopt = True
-                        logger.info("已启用自适应速率")
-                    else:
-                        adopt = False
-                        logger.info("已禁用自适应速率")
-                    logger.info("开始学习")
-                    do_work(chaoxing)   # 开始学习
-        input("任务已结束，请点击回车键退出程序")
-    except Exception as e:
-        print(f"出现报错{e.__class__}")
-        print(f"错误文件名：{e.__traceback__.tb_frame.f_globals['__file__']}")
-        print(f"错误行数：{e.__traceback__.tb_lineno}")
-        print(f"错误原因:{e}")
-        input("请截图提交至Github或Telegram供作者修改代码\n点击回车键退出程序")
+        # 避免异常的无限回滚
+        RB = RollBackManager()
+        # 初始化登录信息
+        username, password, course_list, speed, tiku_config = init_config()
+        # 规范化播放速度的输入值
+        speed = min(2.0, max(1.0, speed))
+        if (not username) or (not password):
+            username = input("请输入你的手机号, 按回车确认\n手机号:")
+            password = input("请输入你的密码, 按回车确认\n密码:")
+        account = Account(username, password)
+        # 设置题库
+        tiku = Tiku()
+        tiku.config_set(tiku_config)  # 载入配置
+        tiku = tiku.get_tiku_from_config()  # 载入题库
+        tiku.init_tiku()  # 初始化题库
+
+        # 实例化超星API
+        chaoxing = Chaoxing(account=account, tiku=tiku)
+        # 检查当前登录状态, 并检查账号密码
+        _login_state = chaoxing.login()
+        if not _login_state["status"]:
+            raise LoginError(_login_state["msg"])
+        # 获取所有的课程列表
+        all_course = chaoxing.get_course_list()
+        course_task = []
+        # 手动输入要学习的课程ID列表
+        if not course_list:
+            print("*" * 10 + "课程列表" + "*" * 10)
+            for course in all_course:
+                print(f"ID: {course['courseId']} 课程名: {course['title']}")
+            print("*" * 28)
+            try:
+                course_list = input(
+                    "请输入想要学习的课程列表,以逗号分隔,例: 2151141,189191,198198\n"
+                ).split(",")
+            except Exception as e:
+                raise FormatError("输入格式错误") from e
+        # 筛选需要学习的课程
+        for course in all_course:
+            if course["courseId"] in course_list:
+                course_task.append(course)
+        if not course_task:
+            course_task = all_course
+        # 开始遍历要学习的课程列表
+        logger.info(f"课程列表过滤完毕, 当前课程任务数量: {len(course_task)}")
+        for course in course_task:
+            logger.info(f"开始学习课程: {course['title']}")
+            # 获取当前课程的所有章节
+            point_list = chaoxing.get_course_point(
+                course["courseId"], course["clazzId"], course["cpi"]
+            )
+
+            # 为了支持课程任务回滚, 采用下标方式遍历任务点
+            __point_index = 0
+            while __point_index < len(point_list["points"]):
+                point = point_list["points"][__point_index]
+                logger.info(f'当前章节: {point["title"]}')
+                logger.debug(f"当前章节 __point_index: {__point_index}")  # 触发参数: -v
+                sleep_duration = random.uniform(1, 3)
+                logger.debug(f"本次随机等待时间: {sleep_duration}")
+                time.sleep(sleep_duration)  # 避免请求过快导致异常, 所以引入随机sleep
+                # 获取当前章节的所有任务点
+                jobs = []
+                job_info = None
+                jobs, job_info = chaoxing.get_job_list(
+                    course["clazzId"], course["courseId"], course["cpi"], point["id"]
+                )
+
+                # bookID = job_info["knowledgeid"] # 获取视频ID
+
+                # 发现未开放章节, 尝试回滚上一个任务重新完成一次
+                try:
+                    if job_info.get("notOpen", False):
+                        __point_index -= 1  # 默认第一个任务总是开放的
+                        # 针对题库启用情况
+                        if not tiku or tiku.DISABLE or not tiku.SUBMIT:
+                            # 未启用题库或未开启题库提交, 章节检测未完成会导致无法开始下一章, 直接退出
+                            logger.error(
+                                f"章节未开启, 可能由于上一章节的章节检测未完成, 请手动完成并提交再重试, 或者开启题库并启用提交"
+                            )
+                            break
+                        RB.add_times(point["id"])
+                        continue
+                except MaxRollBackError as e:
+                    logger.error("回滚次数已达3次, 请手动检查学习通任务点完成情况")
+                    # 跳过该课程, 继续下一课程
+                    break
+
+                # 可能存在章节无任何内容的情况
+                if not jobs:
+                    __point_index += 1
+                    continue
+                # 遍历所有任务点
+                for job in jobs:
+                    # 视频任务
+                    if job["type"] == "video":
+                        # TODO: 目前这个记录功能还不够完善, 中途退出的课程ID也会被记录
+                        # TextBookID = getText() # 获取学习过的课程ID
+                        # if TextBookID.count(bookID) > 0:
+                        #     logger.info(f"课程: {course['title']} 章节: {point['title']} 任务: {job['title']} 已学习过或在学习中, 跳过") # 如果已经学习过该课程, 则跳过
+                        #     break # 如果已经学习过该课程, 则跳过
+                        # appendText(bookID) # 记录正在学习的课程ID
+
+                        logger.trace(
+                            f"识别到视频任务, 任务章节: {course['title']} 任务ID: {job['jobid']}"
+                        )
+                        # 超星的接口没有返回当前任务是否为Audio音频任务
+                        isAudio = False
+                        try:
+                            chaoxing.study_video(
+                                course, job, job_info, _speed=speed, _type="Video"
+                            )
+                        except JSONDecodeError as e:
+                            logger.warning("当前任务非视频任务, 正在尝试音频任务解码")
+                            isAudio = True
+                        if isAudio:
+                            try:
+                                chaoxing.study_video(
+                                    course, job, job_info, _speed=speed, _type="Audio"
+                                )
+                            except JSONDecodeError as e:
+                                logger.warning(
+                                    f"出现异常任务 -> 任务章节: {course['title']} 任务ID: {job['jobid']}, 已跳过"
+                                )
+                    # 文档任务
+                    elif job["type"] == "document":
+                        logger.trace(
+                            f"识别到文档任务, 任务章节: {course['title']} 任务ID: {job['jobid']}"
+                        )
+                        chaoxing.study_document(course, job)
+                    # 测验任务
+                    elif job["type"] == "workid":
+                        logger.trace(f"识别到章节检测任务, 任务章节: {course['title']}")
+                        chaoxing.study_work(course, job, job_info)
+                    # 阅读任务
+                    elif job["type"] == "read":
+                        logger.trace(f"识别到阅读任务, 任务章节: {course['title']}")
+                        chaoxing.strdy_read(course, job, job_info)
+                __point_index += 1
+        logger.info("所有课程学习任务已完成")
+
+    except SystemExit as e:
+        if e.code == 0:  # 正常退出
+            sys.exit(0)
+        else:
+            raise
+    except BaseException as e:
+        import traceback
+
+        logger.error(f"错误: {type(e).__name__}: {e}")
+        logger.error(traceback.format_exc())
+        raise e

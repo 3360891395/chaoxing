@@ -14,43 +14,55 @@
         <img src="https://img.shields.io/github/v/release/Samueli924/chaoxing?display_name=tag&sort=semver" alt="version" />
     </a>
 </p>
+:muscle: 本项目的最终目的是通过开源消灭所谓的付费刷课平台，希望有能力的朋友都可以为这个项目提交代码，支持本项目的良性发展
 
-:star: 觉得有帮助的朋友可以给个**Star**
+:star: 觉得有帮助的朋友可以给个Star
 
-## :point_up: 更新通知  
-20220404更新通知： 适配超星学习通最新接口的v2.3.0版本已发布，现已适配所有的视频任务。  
-
-## :question: 反馈方式  
-
-[我的Telegram群组](https://t.me/Samueli924)
+## :point_up: 更新通知
+20241021更新通知： 感谢[sz134055](https://github.com/sz134055)提交代码[PR #360](https://github.com/Samueli924/chaoxing/pull/360)，**添加了对题库答题的支持**  
 
 ## :books: 使用方法
 
-### 源码运行(推荐)
-1. 提前准备： Python版本>=3.9 因为使用到了:=表达式。urllib3=1.25.11 因为后面的版本对代理的支持有变化。
-2. git clone 项目至本地
-3. pip install -r requirements.txt
-4. python main.py 运行程序
-5. 可选参数 -debug 开启DEBUG模式 --no-adopt 禁用自适应速率 --no-log 不输出日志 --no-logo 隐藏开头项目LOGO --no-sec 关闭隐私保护
+### 源码运行
+1. `git clone --depth=1 https://github.com/Samueli924/chaoxing` 项目至本地
+2. `cd chaoxing`
+3. `pip install -r requirements.txt`
+4. (可选直接运行) `python main.py`
+5. (可选配置文件运行) 复制config_template.ini文件为config.ini文件，修改文件内的账号密码内容, 执行 `python main.py -c config.ini`
+6. (可选命令行运行)`python main.py -u 手机号 -p 密码 -l 课程ID1,课程ID2,课程ID3...(可选)`
 
-## :question: FAQ(常见问题)
+### 打包文件运行
+1. 从最新[Releases](https://github.com/Samueli924/chaoxing/releases)中下载exe文件
+2. (可选直接运行) 双击运行即可
+3. (可选配置文件运行) 下载config_template.ini文件保存为config.ini文件，修改文件内的账号密码内容, 执行 `./chaoxing.exe -c config.ini`
+4. (可选命令行运行)`./chaoxing.exe -u "手机号" -p "密码" -l 课程ID1,课程ID2,课程ID3...(可选)`
 
-1. 程序相关
-    - 问: 程序如何实现完成视频任务点?运行时会有**风险**吗?  
-   答: 程序使用从超星AndroidApp中逆向得到的**API发送协议包**完成任务。在超星不更新其API协议的前提下能够**确保安全**  
-    - 问: 为什么程序运行时间和实际时间一样，不能**一键瞬间完成**所有任务吗?  
-   答: 本程序设计的初衷是在确保**绝对安全**的前提下提高效率，所以在代码中没有添加一键完成所有任务的代码。实际上，一键完成功能十分容易，在Github上已经有许多相关的优秀repo可供下载  
-    - 问: 程序用到了哪些第三方库?  
-   答: 本程序仅用到了requests库负责完成任务。不同于Github中存在的一些其他使用selenium库的repo，具有内存占用小，带宽占用小的优点  
-    
-## :heart: CONTRIBUTORS  
-### :one:感谢[huajijam](https://github.com/huajijam)对chaoxing项目的贡献! [PR #73](https://github.com/Samueli924/chaoxing/pull/73)
-### :two:感谢[ljy0309](https://github.com/lyj0309)修复Attachments BUG! [PR #70](https://github.com/Samueli924/chaoxing/pull/70)
-### :three:感谢[Shanxuns](https://github.com/Shanxuns)修正查找任务点的正则表达式内容 [Pull #33](https://github.com/Samueli924/chaoxing/pull/33)  
-### 对于代码有任何问题或建议欢迎Pull&Request  
+### 题库配置说明
+
+在你的配置文件中找到`[tiku]`，按照注释填写想要使用的题库名（即`provider`，大小写要一致），并填写必要信息，如token，然后在启动时添加`-c [你的配置文件路径]`即可。
+
+题库会默认使用根目录下的`config.ini`文件中的配置，所以你可以复制配置模板（参照前面的说明）命名为`config.ini`，并只配置题库项`[tiku]`，这样即使你不填写账号之类的信息，不使用`-c`参数指定配置文件，题库也会根据这个配置文件自动配置并启用。
+
+对于那些有章节检测且任务点需要解锁的课程，必须配置题库。
+
+**提交模式与答题**
+不配置题库（既不提供配置文件，也没有放置默认配置文件`config.ini`或填写要使用的题库）视为不使用题库，对于章节检测等需要答题的任务会自动跳过。
+
+提交模式`submit`值为
+- `true`：会答完题自动提交，**正确率不做保证**。
+- `false`：会答题，但是不会提交，仅保存，随后你可以自行前往学习通查看、修改、提交。**任何填写不正确的`submit`值会被视为`false`**
+
+> 题库名即`answer.py`模块中根据`Tiku`类实现的具体题库类，例如`TikuYanxi`（言溪题库），在填写时，请务必保持大小写一致。
 
 
-## :warning: 免责声明  
-- 本代码遵循 [GPL-3.0 License](https://github.com/Samueli924/chaoxing/blob/main/LICENSE)协议，允许**开源/免费使用和引用/修改/衍生代码的开源/免费使用**，不允许**修改和衍生的代码作为闭源的商业软件发布和销售**，禁止**使用本代码盈利**，以此代码为基础的程序**必须**同样遵守[GPL-3.0 License](https://github.com/Samueli924/chaoxing/blob/main/LICENSE)协议  
-- 本代码仅用于**学习讨论**，禁止**用于盈利**  
-- 他人或组织使用本代码进行的任何**违法行为**与本人无关  
+## :heart: CONTRIBUTORS
+![Alt](https://repobeats.axiom.co/api/embed/d3931e84b4b2f17cbe60cafedb38114bdf9931cb.svg "Repobeats analytics image")  
+
+<a style="margin-top: 15px" href="https://github.com/Samueli924/chaoxing/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Samueli924/chaoxing" />
+</a>
+
+## :warning: 免责声明
+- 本代码遵循 [GPL-3.0 License](https://github.com/Samueli924/chaoxing/blob/main/LICENSE) 协议，允许**开源/免费使用和引用/修改/衍生代码的开源/免费使用**，不允许**修改和衍生的代码作为闭源的商业软件发布和销售**，禁止**使用本代码盈利**，以此代码为基础的程序**必须**同样遵守 [GPL-3.0 License](https://github.com/Samueli924/chaoxing/blob/main/LICENSE) 协议
+- 本代码仅用于**学习讨论**，禁止**用于盈利**
+- 他人或组织使用本代码进行的任何**违法行为**与本人无关
